@@ -16,6 +16,10 @@ const OBJECTS = [
   { id: "silicone-tube", name: "Silicone Tube" }
 ];
 
+// Shown for objects whose own export is not in place yet.
+const SAMPLE_URL = "static/data/trajectories/bottle.json";
+const SAMPLE_KEY = "trajectories/bottle";
+
 const TRAIL = 4;            // frames of track history drawn behind the head
 const CLOUD = [214, 221, 228];
 const VIRIDIS = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
@@ -199,13 +203,25 @@ async function loadData(view, id) {
   const key = `${view}/${id}`;
   if (cache.has(key)) return cache.get(key);
   // Single-file preview builds inline the exports here.
-  if (window.TACDEFORM_DATA && window.TACDEFORM_DATA[key]) {
-    cache.set(key, window.TACDEFORM_DATA[key]);
-    return window.TACDEFORM_DATA[key];
+  if (window.TACDEFORM_DATA) {
+    const inline = window.TACDEFORM_DATA[key];
+    const fallback = window.TACDEFORM_DATA[SAMPLE_KEY];
+    const hit = inline || fallback;
+    if (hit) {
+      const data = inline ? hit : Object.assign({}, hit, { sample: true });
+      cache.set(key, data);
+      return data;
+    }
   }
-  const res = await fetch(`static/data/${key}.json`);
+  let res = await fetch(`static/data/${key}.json`);
+  let sample = false;
+  if (!res.ok) {
+    res = await fetch(SAMPLE_URL);
+    sample = true;
+  }
   if (!res.ok) throw new Error("missing");
   const data = await res.json();
+  if (sample) data.sample = true;
   cache.set(key, data);
   return data;
 }
@@ -240,7 +256,8 @@ function setupPanel(root) {
         slider.disabled = false;
       }
       if (playBtn) playBtn.disabled = false;
-      setBusy(`${data.tracks[0].length / 3} tactile anchors, ${data.frames} frames`, false);
+      const label = `${data.tracks[0].length / 3} tactile anchors, ${data.frames} frames`;
+      setBusy(data.sample ? `Sample export, standing in until this object is exported. ${label}` : label, false);
     } catch (err) {
       viewer.data = null;
       if (slider) slider.disabled = true;
@@ -288,8 +305,19 @@ function setupPanel(root) {
   }
 
   window.addEventListener("resize", () => viewer.draw());
-  const first = chips.querySelector("button");
-  select(OBJECTS[0], first);
+
+  // Open on the first object that actually has an export.
+  (async () => {
+    const buttons = chips.querySelectorAll("button");
+    for (let i = 0; i < OBJECTS.length; i++) {
+      try {
+        await loadData(view, OBJECTS[i].id);
+        select(OBJECTS[i], buttons[i]);
+        return;
+      } catch (err) { /* try the next object */ }
+    }
+    select(OBJECTS[0], buttons[0]);
+  })();
   return viewer;
 }
 
