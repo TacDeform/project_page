@@ -1,2 +1,0 @@
-Place the anonymized overview video here as overview.mp4 (H.264/AAC).
-Strip identifying metadata first, e.g. ffmpeg -i in.mp4 -map_metadata -1 -c copy overview.mp4
